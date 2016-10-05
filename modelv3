@@ -1,0 +1,102 @@
+#### DAISIE model with mainland speciation and immigration ####
+# by Mark Wright
+# with Alvaro Rodriguez
+remove(list=ls())
+set.seed(23)
+
+
+
+#### Parameters ####
+N <- 0 # number of nonendemic species
+E <- 0 # number of endemic species
+n <- N + E # number of combined nonendemic and endemic species
+K <- 100 
+Kmain <- 2
+M <- 1000 # number of mainland species
+t <- -10 # present time is now t=0 and perspective is looking backwards in time = t
+gamma0 <- 0.005 # rate of immigration
+lambda.c.N0 <- 0.05 # rate of cladogenesis
+lambda.c.E0 <- 0.05 # rate of cladogenesis
+lambda.c.M0 <- 0.05 # rate of cladogenesis
+lambda.a.N0 <- 0.05 # rate of anagenesis
+mu.N0 <- 0.002 # rate of extinction
+mu.E0 <- 0.002 # rate of extinction
+mu.M0 <- 0.00002 # rate of extinction
+total.rate <- (M-N)*gamma0 + N*lambda.c.N0 + E*lambda.c.E0 + N*mu.N0 + E*mu.E0 + N*lambda.a.N0  # adjusted per capita rates
+# values in parentheses are for scenarios with constant area
+# rate of immigration (low = 0.001 (0.1), high = 0.1 (0.3))
+# rate of cladogenesis (L = 0.00001, H = 0.00005 DI, 0.001 DD)
+# rate of anagenesis (L = 0.1, H = 10)
+# rate of extinction (L = 1, H = 10 (3))
+richness <- data.frame(matrix(ncol = 5)) # convert to matrix
+colnames(richness) <- cbind("t", "N", "E", "n","M")
+row <- 1
+
+
+
+#### Functions ####
+dt <- as.numeric(rexp(1, rate = total.rate))
+t <- t + dt # define the time of the first event
+actualize_prob <- function(N,E,M,n,K){#function which changes the probabily of each event depending on N,M and E
+  gamma <- gamma0*(1-(n-M)/K)
+  lambda.c.N <- lambda.c.N0*(1-n/K)
+  lambda.c.E <- lambda.c.E0*(1-n/K)
+  lambda.c.M <- lambda.c.M0*(1-M/Kmain)
+  lambda.a.N <- lambda.a.N0*(1-n/K)
+  mu.N <- mu.N0*N
+  mu.E <- mu.E0*E
+  mu.M <- mu.M0*M
+  return(c(gamma, lambda.c.N, lambda.c.E, lambda.a.N, lambda.c.M, mu.N, mu.E, mu.M))
+}
+
+
+
+#### Simulation ####
+while(t <= 0){
+  probs <- actualize_prob(N,E,M,n,K)
+  for (i in 1:length(probs)){
+    if (probs[i]<0){probs[i] <- 0}
+  }
+  event <- sample(c("immigration", "cladogenesis_N", "cladogenesis_E","cladogenesis_M", "anagenesis", "extinction_N", "extinction_E","extinction_N"),
+                  size = 1, replace = T,  prob = probs)
+  if(event == "immigration"){
+    N <- N + 1
+  } else if (event == "cladogenesis_N" & N >= 1){
+    N <- N - 1
+    E <- E + 2
+  } else if (event == "cladogenesis_E" & E >= 1){
+    E <- E + 1
+  }else if (event == "cladogenesis_M" & M >= 1){
+    M <- M + 1
+  } 
+  else if (event == "anagenesis" & N >= 1){
+    N <- N - 1
+    E <- E + 1
+  } else if (event == "extinction_N" & N >= 1){
+    N <- N - 1
+  } else if (event == "extinction_E" & E >= 1){
+    E <- E - 1
+  }else if (event == "extinction_M" & M>0){
+    M <- M - 1
+  }
+  n <- N + E
+  richness[row,] <- c(t, N, E, n, M)
+  row <- row + 1
+  total.rate <- (M-N)*probs[1] + N*probs[2] + E*probs[3] + N*probs[4] + N*probs[5] + E*probs[6]
+  dt <- as.numeric(rexp(1, rate = total.rate))
+  t <- t + dt
+}
+
+
+
+#### Plot the simulation ####
+plot(data = richness, n~t, type = "l", lty = 2,
+     xlab = "Time (mya)",
+     ylab = "Richness")
+lines(data = richness, N~t, col = "blue", lwd = 2)
+lines(data = richness, E~t, col = "red", lwd = 2)
+lines(data = richness, M~t, col = "green", lwd = 2)
+legend(x = "topleft",
+       legend = c("Total, n", "Nonendemic, N", "Endemic, E"),
+       text.col = c("black", "blue", "red"))
+
