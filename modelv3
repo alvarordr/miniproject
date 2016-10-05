@@ -22,7 +22,7 @@ lambda.a.N0 <- 0.05 # rate of anagenesis
 mu.N0 <- 0.002 # rate of extinction
 mu.E0 <- 0.002 # rate of extinction
 mu.M0 <- 0.00002 # rate of extinction
-total.rate <- (M-N)*gamma0 + N*lambda.c.N0 + E*lambda.c.E0 + N*mu.N0 + E*mu.E0 + N*lambda.a.N0  # adjusted per capita rates
+total.rate <- (M-N)*gamma0 + N*lambda.c.N0 + E*lambda.c.E0 + M*lambda.c.M0 + N*mu.N0 + E*mu.E0 + N*lambda.a.N0 + M*mu.M0 # adjusted per capita rates
 # values in parentheses are for scenarios with constant area
 # rate of immigration (low = 0.001 (0.1), high = 0.1 (0.3))
 # rate of cladogenesis (L = 0.00001, H = 0.00005 DI, 0.001 DD)
@@ -57,7 +57,7 @@ while(t <= 0){
   for (i in 1:length(probs)){
     if (probs[i]<0){probs[i] <- 0}
   }
-  event <- sample(c("immigration", "cladogenesis_N", "cladogenesis_E","cladogenesis_M", "anagenesis", "extinction_N", "extinction_E","extinction_N"),
+  event <- sample(c("immigration", "cladogenesis_N", "cladogenesis_E","cladogenesis_M", "anagenesis", "extinction_N", "extinction_E","extinction_M"),
                   size = 1, replace = T,  prob = probs)
   if(event == "immigration"){
     N <- N + 1
@@ -82,7 +82,7 @@ while(t <= 0){
   n <- N + E
   richness[row,] <- c(t, N, E, n, M)
   row <- row + 1
-  total.rate <- (M-N)*probs[1] + N*probs[2] + E*probs[3] + N*probs[4] + N*probs[5] + E*probs[6]
+  total.rate <- (M-N)*probs[1] + N*probs[2] + E*probs[3] + M*probs[4] + N*probs[5] + N*probs[6] + E*probs[7] + M*probs[8]
   dt <- as.numeric(rexp(1, rate = total.rate))
   t <- t + dt
 }
