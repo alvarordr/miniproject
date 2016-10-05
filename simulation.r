@@ -1,6 +1,5 @@
 #### DAISIE model with mainland speciation and immigration ####
-# by Mark Wright
-# with Alvaro Rodriguez
+# by Mark Wright & Alvaro Rodriguez
 remove(list=ls())
 set.seed(23)
 
