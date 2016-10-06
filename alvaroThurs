@@ -1,7 +1,7 @@
 #### DAISIE model with mainland speciation and immigration ####
 # by Mark Wright and Alvaro Rodriguez
 remove(list=ls())
-set.seed(23)
+set.seed(100)
 
 
 
@@ -183,6 +183,7 @@ simulation <- function(B,E,M,n,K){
     setdiff(Bid,take_id)
     Eid=c(Eid,take_id)
     ID=c(ID,take_id)
+    fatherIDsE=c(fatherIDsE,take_id)
     #tables("update",richness,take_id,father_id,sim_number,number_tables)
   } else if (event == "extinction_B" && B>0){
     B <- B - 1
@@ -216,8 +217,10 @@ simulation <- function(B,E,M,n,K){
 }
   return(richness)
 }
-richness <- simulation(B,E,M,n,K)
 
+for (i in 1:100){
+richness <- simulation(B,E,M,n,K)
+}
 
 
 
