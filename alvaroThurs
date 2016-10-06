@@ -21,9 +21,9 @@ fatherIDsE=NULL
 fatherIDsB=NULL
 deadIDs=NULL
 t <- -25 # present time is now t=0 and perspective is looking backwards in time = t
-gamma0 <- 0.005 # rate of immigration
-lambda.c.B0 <- 0.15 # rate of cladogenesis
-lambda.c.E0 <- 0.05 # rate of cladogenesis
+gamma0 <- 0.0005 # rate of immigration
+lambda.c.B0 <- 0.25 # rate of cladogenesis
+lambda.c.E0 <- 0.25 # rate of cladogenesis
 lambda.c.M0 <- 0.05 # rate of cladogenesis
 lambda.a.B0 <- 0.05 # rate of anagenesis
 mu.B0 <- 0.2 # rate of extinction
@@ -56,7 +56,7 @@ actualize_rates <- function(B,E,M,n,K){#function which changes the probabily of 
 tables <- function(option,richness,speciesID,fatherID,sim_number,number_tables) {
   exit=0
   if (option=="new"){
-    assign(paste("table_",sim_number,"_", number_tables, sep = ""), matrix(ncol=4,nrow=1,data=c(speciesID,speciesID,-richness[nrow(richness),1],-1)),envir = .GlobalEnv)  
+    assign(paste("table_",sim_number,"_", number_tables, sep = ""), matrix(ncol=4,nrow=1,data=c(speciesID,-1,-richness[nrow(richness),1],-1)),envir = .GlobalEnv)  
   }else{
     for (i in 1:number_tables){
       a=eval(parse(text=paste("table_",sim_number,"_",i,sep = "")))
@@ -114,26 +114,34 @@ simulation <- function(B,E,M,n,K){
     tables("new",richness,take_id,father_id,sim_number,number_tables)
   } else if (event == "cladogenesis_B" && B>0){
     B <- B - 1
-    take_id=sample(Bid,1)
+    take_id=sample(fatherIDsB,1)
     ID=c(ID,take_id)
+    setdiff(fatherIDsB,take_id)
     setdiff(Bid,take_id)
-    if(length(fatherIDsB)<=1){
-      father_id=fatherIDsB
-    }else{
-      father_id=sample(fatherIDsB,size = 1)
-    }
-    fatherIDsB=c(fatherIDsB,take_id)
+    #if(length(fatherIDsB)<=1){
+    #  father_id=fatherIDsB
+    #}else{
+    #  father_id=sample(fatherIDsB,size = 1)
+    #}
+    father_id=take_id
     choose <- sample(1:0,1)
+    tables("die",richness,take_id,father_id,sim_number,number_tables)
     if (choose==0){
       E <- E + 2
+      
+      take_id=length(ID)+1
       Eid=c(Eid,take_id)
       #update table
+      ID=c(ID,take_id)
+      fatherIDsE=c(fatherIDsE,take_id)
       richness[row,] <- c(t, B, E, n, M)
       tables("add",richness,take_id,father_id,sim_number,number_tables)
-      #take_id=length(ID)+1
-      #tables("add",richness,take_id,father_id,sim_number,number_tables)
-      #ID=c(ID,take_id)
-      #Eid=c(Eid,take_id)
+      
+      take_id=length(ID)+1
+      tables("add",richness,take_id,father_id,sim_number,number_tables)
+      ID=c(ID,take_id)
+      Eid=c(Eid,take_id)
+      fatherIDsE=c(fatherIDsE,take_id)
       #update table
     }else{
       M <- M + 2
@@ -146,13 +154,23 @@ simulation <- function(B,E,M,n,K){
     }
   } else if (event == "cladogenesis_E" && E>0){
     E <- E + 1
+    father_id=sample(fatherIDsE,size = 1)
+    richness[row,] <- c(t, B, E, n, M)
+    tables("die",richness,father_id,father_id,sim_number,number_tables)
+    setdiff(father_id,fatherIDsE)
+    setdiff(father_id,Eid)
+    
     take_id=length(ID)+1
     Eid=c(Eid,take_id)
     ID=c(ID,take_id)
-    father_id=sample(Eid,size = 1)
-    richness[row,] <- c(t, B, E, n, M)
-    tables("add",richness,take_id,father_id,sim_number,number_tables)
     fatherIDsE=c(fatherIDsE,take_id)
+    tables("add",richness,father_id,father_id,sim_number,number_tables)
+    
+    take_id=length(ID)+1
+    Eid=c(Eid,take_id)
+    ID=c(ID,take_id)
+    fatherIDsE=c(fatherIDsE,take_id)
+    tables("add",richness,father_id,father_id,sim_number,number_tables)
   } else if (event == "cladogenesis_M"){
     M <- M + 1
     take_id=length(ID)+1
@@ -170,6 +188,7 @@ simulation <- function(B,E,M,n,K){
     B <- B - 1
     take_id=sample(Bid,1)
     setdiff(Bid,take_id)
+    setdiff(fatherIDsB,take_id)
     deadIDs=c(deadIDs,take_id)
     richness[row,] <- c(t, B, E, n, M)
     tables("die",richness,take_id,father_id,sim_number,number_tables)
@@ -177,6 +196,7 @@ simulation <- function(B,E,M,n,K){
     E <- E - 1
     take_id=sample(Eid,1)
     setdiff(Eid,take_id)
+    setdiff(fatherIDsE,take_id)
     deadIDs=c(deadIDs,take_id)
     richness[row,] <- c(t, B, E, n, M)
     tables("die",richness,take_id,father_id,sim_number,number_tables)
@@ -184,6 +204,7 @@ simulation <- function(B,E,M,n,K){
     M <- M - 1
     take_id=sample(Mid,1)
     setdiff(Mid,take_id)
+    setdiff(fatherIDsM,take_id)
     deadIDs=c(deadIDs,take_id)
   } ### if species on mainland goes extinct, island version becomes endemic
   n <- B + E ### tweak code to reflect ^^ adjusting state-space
@@ -197,20 +218,7 @@ simulation <- function(B,E,M,n,K){
 }
 richness <- simulation(B,E,M,n,K)
 
-#### Plot the simulation ####
-plot(data = richness, n~t, type = "l", lty = 2, xlab = "Time (mya)", ylab = "Richness")
-lines(data = richness, B~t, col = "blue", lwd = 2)
-lines(data = richness, E~t, col = "red", lwd = 2)
-par(new=T)
-plot(data = richness, M~t, type = "l", axes = F, xlab = NA, ylab = NA, col = "green")
-axis(4)
-mtext(text = "Mainland Richness", side=4, line=3)
-legend(x = "topleft", legend = c("Total, n", "Both, B", "Endemic, E", "Mainland, M", "(Right axis)"), text.col = c("black", "blue", "red", "green", "green"))
 
-#install.packages("DDD")
-library(DDD)
-table_1_1[1,2]=-1
-a=L2phylo(L = table_1_1,dropextinct = F)
 
 
 
