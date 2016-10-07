@@ -1,0 +1,123 @@
+while(t <= 0){
+    row <- row + 1
+    rates <- actualize_rates(B,E,M,n,K)
+    event <- sample(c("immigration", "cladogenesis_B", "cladogenesis_E","cladogenesis_M", "anagenesis", "extinction_B", "extinction_E","extinction_M"), size = 1, replace = T,  prob = rates)
+    if(event == "immigration"){
+      B <- B + 1
+      M <- M - 1
+      richness[row,] <- c(t, B, E, n, M)
+      #Quit id from Mid vector
+      take_id=sample(Mid,1)
+      Mid=setdiff(Mid,take_id)
+      #Add id to Bid vector
+      Bid=c(Bid,take_id)
+      #add id to putative fathers in B
+      father_id=take_id
+      fatherIDsB=c(fatherIDsB,father_id)
+      #create a table with the new father's id
+      number_tables=number_tables+1
+      tables("new",richness,take_id,father_id,sim_number,number_tables)
+    } else if (event == "cladogenesis_B" && B>0){
+      B <- B - 1
+      richness[row,] <- c(t, B, E, n, M)
+      #remove id from Bid vector
+      take_id=sample(fatherIDsB,1)
+      Bid=setdiff(Bid,take_id)
+      #take id as a father id for updating tables later
+      father_id=take_id
+      #remove id from putative fathers in B
+      fatherIDsB=setdiff(fatherIDsB,take_id)
+      #add extiction date to the table
+      tables("die",richness,take_id,father_id,sim_number,number_tables)
+      #decide if cladogenesis happens in Mainland or island
+      choose <- sample(1:0,1)
+      if (choose==0){#island
+        E <- E + 2
+        #update richness table
+        richness[row,] <- c(t, B, E, n, M)
+        for (i in 1:2){
+          #create new Eid
+          take_id=length(ID)+1
+          Eid=c(Eid,take_id)
+          #update total IDs table
+          ID=c(ID,take_id)
+          #add row to the table
+          tables("add",richness,take_id,father_id,sim_number,number_tables)
+          }
+      }else{#mainland
+        M <- M + 2
+        richness[row,] <- c(t, B, E, n, M)
+        #update mainland ids
+        for (i in 1:2){
+          take_id=length(ID)+1
+          Mid=c(Mid,take_id)
+        }
+      }
+    } else if (event == "cladogenesis_E" && E>0){
+      E <- E + 1
+      richness[row,] <- c(t, B, E, n, M)
+      #take putative father
+      take_id=sample(Eid,size = 1)
+      father_id=take_id
+      #setdiff(fatherIDsE,father_id)
+      Eid=setdiff(Eid,father_id)
+      #add extinction date to the father
+      tables("die",richness,take_id,father_id,sim_number,number_tables)
+      #remove id from putative fathers in E and form Eid
+      for (i in 1:2){
+        #generate new id
+        take_id=length(ID)+1
+        #add id to total ids,to Eid and to putative fathers in E id
+        Eid=c(Eid,take_id)
+        ID=c(ID,take_id)
+        #update table
+        tables("add",richness,take_id,father_id,sim_number,number_tables)
+      }
+    } else if (event == "cladogenesis_M"){
+      M <- M + 1
+      richness[row,] <- c(t, B, E, n, M)
+      take_id=length(ID)+1
+      Mid=c(Mid,take_id)
+      ID=c(ID,take_id)
+    } else if (event == "anagenesis" && B>0){
+      B <- B - 1
+      E <- E + 1
+      richness[row,] <- c(t, B, E, n, M)
+      #take B id and eliminate from Bid vector
+      take_id=sample(Bid,1)
+      Bid=setdiff(Bid,take_id)
+      #add extiction time
+      tables("die",richness,father_id,father_id,sim_number,number_tables)
+      #generate an id for new E, add it to Eid and to putative E fathers
+      take_id=length(ID)+1
+      Eid=c(Eid,take_id)
+      ID=c(ID,take_id)
+      #tables("update",richness,take_id,father_id,sim_number,number_tables)
+    } else if (event == "extinction_B" && B>0){
+      B <- B - 1
+      richness[row,] <- c(t, B, E, n, M)
+      #take a B id and remove it to Bid, and to putative fathers in B
+      take_id=sample(Bid,1)
+      Bid=setdiff(Bid,take_id)
+      fatherIDsB=setdiff(fatherIDsB,take_id)
+      #add extinction date to the table
+      tables("die",richness,take_id,father_id,sim_number,number_tables)
+    } else if (event == "extinction_E"){
+      E <- E - 1
+      richness[row,] <- c(t, B, E, n, M)
+      #take a E id and remove it to Eid, and to putative fathers in E
+      take_id=sample(Eid,1)
+      Eid=setdiff(Eid,take_id)
+      tables("die",richness,take_id,father_id,sim_number,number_tables)
+    } else if (event == "extinction_M"){
+      M <- M - 1
+      richness[row,] <- c(t, B, E, n, M)
+      #take a M id and remove it to Mid
+      take_id=sample(Mid,1)
+      Mid=setdiff(Mid,take_id)
+    } ### if species on mainland goes extinct, island version becomes endemic
+    n <- B + E ### tweak code to reflect ^^ adjusting state-space
+    total.rate <- (M-B)*rates[1] + B*rates[2] + E*rates[3] + M*rates[4] + B*rates[5] + B*rates[6] + E*rates[7] + M*rates[8]
+    dt <- as.numeric(rexp(1, rate = total.rate))
+    t <- t + dt
+  }
