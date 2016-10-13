@@ -442,7 +442,12 @@ for(i in 1:nurows){
 
 #### Plot the corrected replicated simulations ####
 par(mar = c(5,5,2,5))
-plot(data = confid.sim, nMedian~t, type = "l", main = "Replicated Simulation", xlab = "Time (mya)", ylab = "Richness", col = "white", lwd = 2)
+plot(data = confid.sim, nMedian~t, type = "l",xlab = "Time (mya)",ylab = "Island richness", col = "white", lwd = 2)
+mtext(text = "(", side=2, line=2, at=44)
+mtext(text = "E", side=2, line=2,col="red",at=47)
+mtext(text = "+", side=2, line=2,at=50)
+mtext(text = "B", side=2, line=2,col="blue",at=53)
+mtext(text = ")", side=2, line=2,at=56)
 lines(data = confid.sim, nHigh~t, col = "white", lty = 2, lwd = 1)
 lines(data = confid.sim, nLow~t, col = "white", lty = 2, lwd = 1)
 lines(data = confid.sim, BMedian~t, col = "blue", lwd = 2)
@@ -452,14 +457,15 @@ lines(data = confid.sim, EMedian~t, col = "red", lwd = 2)
 lines(data = confid.sim, EHigh~t, col = "pink", lty = 2, lwd = 1)
 lines(data = confid.sim, ELow~t, col = "pink", lty = 2, lwd = 1)
 par(new=T)
-plot(data = confid.sim, MMedian~t, type = "l", axes = F, xlab = NA, ylab = NA, col = "green", lwd = 2)
+plot(data = confid.sim, MMedian~t, type = "l", axes = F, xlab = NA, ylab = NA, col = "green", lwd = 2,ylim=c(0,1000))
 lines(data = confid.sim, MHigh~t, col = "limegreen", lty = 2, lwd = 1)
 lines(data = confid.sim, MLow~t, col = "limegreen", lty = 2, lwd = 1)
 axis(4)
-mtext(text = "Mainland Richness", side=4, line=3)
-for(i in 1:20){abline(h = 500 + i*50, lty = 2, col = "darkgrey")}
+mtext(text = "Mainland Richness", side=4, line=2)
+mtext(text = "(",side=4,line=3,at=470)
+mtext(text = "M",side=4,line=3,col="green",at=500)
+mtext(text = ")",side=4,line=3,at=530)
+for(i in 1:19){abline(h = 0 + i*100, lty = 2, col = "darkgrey")}
 
 
 
-
-#
