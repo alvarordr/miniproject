@@ -1,0 +1,59 @@
+
+
+get_tables_data=function(total_simulations,table.generation){
+  if(table.generation==F){return()}
+  sim=1
+  table=1
+  exit_sim=F
+  total_tables=NULL
+  total_table_length=0
+  mean_table_length=NULL
+  biggest_table_n=0
+  biggest_table_nrow_all=0
+  biggest_tables_all=""
+  biggest_table_name=""
+  biggest_tables=NULL
+  biggest_tables_nrow=NULL
+  all_tables=data.frame(id=numeric(0),father_id=numeric(0),appearance=numeric(0),extinction=numeric(0),sim=numeric(0))
+  colnames(all_tables)=c("id","father_id","appearance","extinction")
+  while(exit_sim==F){
+    if (exists(paste("table_",sim,"_",table,sep = ""))){
+      a=eval(parse(text=paste("table_",sim,"_",table,sep = "")))
+      total_table_length=total_table_length+nrow(a)
+      a=cbind(a,rep(sim,nrow(a)))
+      all_tables=rbind(all_tables,a)
+      if (nrow(a)>biggest_table_n){
+        biggest_table_n=nrow(a)
+        biggest_table_name=paste("table_",sim,"_",table,sep = "")
+      }
+      if (nrow(a)>biggest_table_nrow_all){
+        biggest_table_nrow_all=nrow(a)
+        biggest_table_all=paste("table_",sim,"_",table,sep = "")
+      }
+      table=table+1
+    }else{
+      sim=sim+1
+      table=table-1
+      total_tables=c(total_tables,table)
+      mean_table_length=c(mean_table_length,total_table_length/table)
+      table=1
+      total_table_length=0
+      biggest_tables=c(biggest_tables,biggest_table_name)
+      biggest_tables_nrow=c(biggest_tables_nrow,biggest_table_n)
+      biggest_table_n=0
+    }
+    if (sim>total_simulations){
+      exit_sim=T
+    }
+  }
+  return(list(total_tables,mean_table_length,biggest_tables_nrow,all_tables,biggest_tables,biggest_table_all))
+}
+
+
+if(table.generation){
+  plot(all_tables$number~all_tables$appearance,pch=19,cex=0.01,xlab="Time",ylab="Number of species")
+  lines(all_tables$number~all_tables$appearance,type="s")
+  plot_cumulative(get(biggest_table))
+}
+
+  biggest_table=a[[6]]
