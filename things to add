@@ -1,0 +1,10 @@
+plot_table_phylogeny=function(table){
+  new_table=table
+  new_table[,1]=-table[,3]
+  new_table[,2]=table[,2]
+  new_table[,3]=table[,1]
+  new_table[,4]=-table[,4]
+  L2phylo(new_table)
+}
+
+table=table-1
