@@ -1,0 +1,465 @@
+#### Island biogeography model with mainland dynamics ####
+# by Mark Wright and Alvaro Rodriguez
+remove(list=ls())
+dev.off()
+set.seed(23)
+#install.packages("DDD", "dplyr", "zoo")
+library(dplyr)
+library(zoo)
+library(DDD)
+setwd("/Users/markwright/Documents/Academic/MEME/RUG/Mini Project/")
+
+
+
+#### Constants that are not redefined per simulation ####
+K <- 100
+Kmain <- 1000
+gamma0 <- 0.25
+lambda.c.B0 <- 0.25
+lambda.c.E0 <- 0.25
+lambda.c.M0 <- 0.05
+lambda.a.B0 <- 0.05
+mu.B0 <- 0.002
+mu.E0 <- 0.008
+mu.M0 <- 0.00002
+table.generation <- F
+
+####### events that increase n should only occur when n<K, whereas events that increase M should only occur when M<Kmain " & n<K" " & M<Kmain" ### update to have (& M + B < Kmain)
+###### suggested new M0 at 800 with Kmain <- 1000, this would create an easier to read graph from c(0,100) on left axis and c(0,1000) on right axis
+###### also note that smaller values for rates --> smaller number of timesteps per simulation --> faster simulation --> ability to run more simulations
+
+#Starting time & population sizes
+t0 <- -10
+B0 <- 0
+E0 <- 0
+n0 <- B0 + E0
+M0 <- 800
+sims <- 100
+
+### For testing
+total.rate <- (M-B)*rates[1] + B*rates[2] + E*rates[3] + M*rates[4] + B*rates[5] + B*rates[6] + E*rates[7] + M*rates[8] ####### add migration back to mainland
+as.numeric(10*rexp(1, rate = total.rate))
+dt <- as.numeric(10*rexp(1, rate = total.rate))
+
+#### Define Functions ####
+actualize_rates <- function(B,E,M,n){
+  gamma <- max(0,gamma0*(1-(n-M)/Kmain))
+  gamma2 <- max(0,gamma0*(1-(M-n)/K))
+  lambda.c.B <- max(0,lambda.c.B0*(1-n/K))
+  lambda.c.E <- max(0,lambda.c.E0*(1-n/K))
+  lambda.c.M <- max(0,lambda.c.M0*(1-M/Kmain))
+  lambda.a.B <- max(0,lambda.a.B0*(1-n/K))
+  mu.B <- max(0,mu.B0*B)
+  mu.E <- max(0,mu.E0*E)
+  mu.M <- max(0,mu.M0*M)
+  return(c(gamma, gamma2, lambda.c.B, lambda.c.E, lambda.a.B, lambda.c.M, mu.B, mu.E, mu.M))
+}
+plot_table_phylogeny=function(table){
+  new_table=table
+  new_table[,1]=-table[,3]
+  new_table[,2]=table[,2]
+  new_table[,3]=table[,1]
+  new_table[,4]=-table[,4]
+  L2phylo(new_table)
+}
+tables <- function(option,richness,speciesID,fatherID,sim_number,number_tables) {
+  if(table.generation==F){return()}
+  exit=0
+  if (option=="new"){
+    assign(paste("table_",sim_number,"_", number_tables, sep = ""), matrix(ncol=4,nrow=1,data=c(speciesID,0,-richness[nrow(richness),1],-1)),envir = .GlobalEnv)  
+  }else if(option=="add_clau_B"){
+    for (i in 1:number_tables){
+      a=eval(parse(text=paste("table_",sim_number,"_",i,sep = "")))
+      if(a[1,1]==fatherID && a[1,4]==-1 && nrow(a)==1){
+        a=rbind(a, c(speciesID,fatherID,-richness[nrow(richness),1],-1))
+        assign(paste("table_",sim_number,"_",i,sep = ""),a,envir = .GlobalEnv)
+        break
+      }
+    }
+  }else{
+    for (i in 1:number_tables){
+      a=eval(parse(text=paste("table_",sim_number,"_",i,sep = "")))
+      for (j in 1:nrow(a)){
+        if(a[j,1]==fatherID){
+          if (option == "add"){
+            a=rbind(a, c(speciesID,fatherID,-richness[nrow(richness),1],-1))
+            assign(paste("table_",sim_number,"_",i,sep = ""),a,envir = .GlobalEnv)
+            exit=1
+            break
+          }
+        }
+        if(a[j,1]==speciesID){
+          if (option == "die"){
+            a[j,4]=-richness[nrow(richness),1]
+            assign(paste("table_",sim_number,"_",i,sep = ""),a,envir = .GlobalEnv)
+            exit=1
+            break
+          }else if(option == "update"){
+            print(paste("table_",sim_number,"_",i,sep = ""))
+            substract=-a[j,3]
+            #a[1,3]=-richness[nrow(richness),1]
+            for(k in j:nrow(a)){
+              a[k,3]=a[k,3] - substract
+            }
+            assign(paste("table_",sim_number,"_",i,sep = ""),a,envir = .GlobalEnv)
+            exit=1
+            break
+          }
+        }
+      }
+      if (exit==1){break}
+    }
+  }
+} 
+
+plot_cumulative=function(table){
+  table=as.data.frame(table)
+  colnames(table)=c("id","father_id","appearance","extinction")
+  table$appearance=-table$appearance
+  table=table[order(table$appearance),]
+  table=cbind(table,seq(1,nrow(table),1))
+  colnames(table)=c("id","father_id","appearance","extinction","number")
+  plot(table$number~table$appearance,pch=19,cex=0.01,xlab="Time",ylab="Number of species",xlim=c(t0,0))
+  lines(table$number~table$appearance,type="s")
+  last_num=table$number[nrow(table)]
+  last_time=table$appearance[nrow(table)]
+  segments(x0=last_time,y0=last_num,y1=last_num,x1=0)
+}
+
+get_tables_data=function(total_simulations,table.generation){
+  if(table.generation==F){return()}
+  sim=1
+  table=1
+  exit_sim=F
+  total_tables=NULL
+  total_table_length=0
+  mean_table_length=NULL
+  biggest_table_n=0
+  biggest_table_name=""
+  biggest_tables=NULL
+  biggest_tables_nrow=NULL
+  all_tables=data.frame(id=numeric(0),father_id=numeric(0),appearance=numeric(0),extinction=numeric(0),sim=numeric(0))
+  colnames(all_tables)=c("id","father_id","appearance","extinction")
+  while(exit_sim==F){
+    if (exists(paste("table_",sim,"_",table,sep = ""))){
+      a=eval(parse(text=paste("table_",sim,"_",table,sep = "")))
+      total_table_length=total_table_length+nrow(a)
+      a=cbind(a,rep(sim,nrow(a)))
+      all_tables=rbind(all_tables,a)
+      if (nrow(a)>biggest_table_n){
+        biggest_table_n=nrow(a)
+        biggest_table_name=paste("table_",sim,"_",table,sep = "")
+      }
+      table=table+1
+    }else{
+      sim=sim+1
+      table=table-1
+      total_tables=c(total_tables,table)
+      mean_table_length=c(mean_table_length,total_table_length/table)
+      table=1
+      total_table_length=0
+      biggest_tables=c(biggest_tables,biggest_table_name)
+      biggest_tables_nrow=c(biggest_tables_nrow,biggest_table_n)
+      biggest_table_n=0
+    }
+    if (sim==total_simulations){
+      exit_sim=T
+    }
+  }
+  return(list(total_tables,mean_table_length,biggest_tables_nrow,all_tables))
+}
+
+
+
+
+#### Simulation ####
+simulation <- function(B,E,M,sim_number){
+  t <- t0
+  B <- B0
+  E <- E0
+  n <- n0
+  M <- M0
+  richness <- data.frame(matrix(ncol = 5))
+  colnames(richness) <- cbind("t", "B", "E", "n","M")
+  row <- 0
+  Bid <- NULL
+  Eid <- NULL
+  Mid <- seq(1,1000,1)
+  ID <- Mid
+  deadIDs <- NULL
+  assign("number_tables",0,envir = .GlobalEnv)
+  tables=NULL
+  assign("sim_number",value = 0,envir = .GlobalEnv)
+  while(t <= 0){
+    row <- row + 1
+    rates <- actualize_rates(B,E,M,n)
+    total.rate <- (M-B)*rates[1] + B*rates[2] + E*rates[3] + M*rates[4] + B*rates[5] + B*rates[6] + E*rates[7] + M*rates[8] ####### add migration back to mainland
+    dt <- as.numeric(10*rexp(1, rate = total.rate))
+    event <- sample2(c("immigration","migration_back", "cladogenesis_B", "cladogenesis_E","cladogenesis_M", "anagenesis_B", "extinction_B", "extinction_E","extinction_M"), size = 1, replace = T,  prob = rates)
+    if(event == "immigration" & n<K){
+      B <- B + 1
+      M <- M - 1
+      richness[row,] <- c(t, B, E, n, M)
+      take_id=sample2(Mid,1)
+      Mid=setdiff(Mid,take_id)
+      Bid=c(Bid,take_id)
+      father_id=take_id
+      number_tables=number_tables+1###########
+      tables("new",richness,take_id,father_id,sim_number,number_tables)
+    }else if(event == "migration_back" && E>0){
+      E <- E - 1
+      B <- B + 1
+      take_id=sample2(Eid,1)
+      Bid <- c(Bid,take_id)
+      Eid=setdiff(Eid,take_id)
+      richness[row,] <- c(t, B, E, n, M)
+    } 
+    else if (event == "cladogenesis_B" && B>0){
+      #B <- B - 1###not change
+      richness[row,] <- c(t, B, E, n, M)
+      father_id=sample2(Bid,1)
+      #Bid=setdiff(Bid,take_id)
+      choose <- sample2(1:0,1)
+      if (choose==0 & n<K){#island
+        E <- E + 1#######
+        richness[row,] <- c(t, B, E, n, M)
+        take_id=length(ID)+1
+        Eid=c(Eid,take_id)
+        ID=c(ID,take_id)
+        tables("add_clau_B",richness,take_id,father_id,sim_number,number_tables)
+      }else if(choose==1 & (M + B) < Kmain){#mainland
+        M <- M + 1###############
+        take_id=length(ID)+1
+        Mid=c(Mid,take_id)
+      }
+    } else if (event == "cladogenesis_E" && E>0 & n<K){
+      E <- E + 1
+      richness[row,] <- c(t, B, E, n, M)
+      father_id=sample2(Eid,size = 1)
+      take_id=length(ID)+1
+      Eid=c(Eid,take_id)
+      ID=c(ID,take_id)
+      tables("add",richness,take_id,father_id,sim_number,number_tables)
+    } else if (event == "cladogenesis_M"& (M + B) < Kmain){
+      M <- M + 1
+      richness[row,] <- c(t, B, E, n, M)
+      take_id=length(ID)+1
+      Mid=c(Mid,take_id)
+      ID=c(ID,take_id)
+    } else if (event == "anagenesis_B" && B>0){
+      B <- B - 1
+      E <- E + 1
+      M <- M + 1
+      richness[row,] <- c(t, B, E, n, M)
+      father_id=sample2(Bid,1)
+      setdiff(Bid,father_id)
+      tables("die",richness,father_id,father_id,sim_number,number_tables)
+      take_id=length(ID)+1
+      Eid=c(Eid,take_id)
+      ID=c(ID,take_id)
+      tables("add_clau_B",richness,take_id,father_id,sim_number,number_tables)
+      take_id=length(ID)+1
+      Mid=c(Mid,take_id)
+      ID=c(ID,take_id)
+    } else if (event == "extinction_B" && B>0){
+      B <- B - 1
+      richness[row,] <- c(t, B, E, n, M)
+      take_id=sample2(Bid,1)
+      Bid=setdiff(Bid,take_id)
+      choose=sample(1:0,1)
+      if (choose==0){#mainland extinction
+        E <- E + 1
+        Eid=c(Eid,take_id)
+      }else if(choose==1){#island extinction
+        M <- M + 1
+        Mid = c(Mid,take_id)
+        tables("die",richness,take_id,take_id,sim_number,number_tables)
+      }
+    } else if (event == "extinction_E"){
+      E <- E - 1
+      richness[row,] <- c(t, B, E, n, M)
+      take_id=sample2(Eid,1)
+      Eid=setdiff(Eid,take_id)
+      tables("die",richness,take_id,father_id,sim_number,number_tables)
+    } else if (event == "extinction_M"){
+      M <- M - 1
+      richness[row,] <- c(t, B, E, n, M)
+      take_id=sample2(Mid,1)
+      Mid=setdiff(Mid,take_id)
+    }
+    richness[row,] <- c(t, B, E, n, M)
+    n <- B + E
+    t <- t + dt
+  }
+  return(richness)
+}
+
+
+
+list.sims <- list()
+last_simulation_values=c(0,0,0)
+for(i in 1:sims){
+  richness <- simulation(B,E,M,i)
+  richness
+  richness$tab <- c(rep(i,nrow(richness)))
+  richness$count <- c(1:nrow(richness))
+  name <- paste("richness_",i,sep = "")
+  list.sims[[name]] <- richness
+  last_simulation_values=rbind(last_simulation_values,richness[nrow(richness),c(2,3,5)])
+}
+
+
+
+#### Adding Phylo tables ####
+if(table.generation){
+  total_simulations <- i
+  a=get_tables_data(total_simulations,table.generation)
+  total_tables=a[[1]]
+  mean_table_length=a[[2]]
+  biggest_tables_nrow=a[[3]]
+  all_tables=a[[4]]
+  
+  #formatting all_tables
+  colnames(all_tables)=c("id","father_id","appearance","extinction","simulation")
+  all_tables$appearance=-all_tables$appearance
+  all_tables=all_tables[order(all_tables$appearance),]
+  all_tables=cbind(all_tables,seq(1,nrow(all_tables),1))
+  colnames(all_tables)=c("id","father_id","appearance","extinction","simulation","number")
+  
+  ##plotting one of the simulations
+  #all_tables=all_tables[all_tables$simulation==1,]
+  plot(all_tables$number~all_tables$appearance,pch=19,cex=0.01,xlab="Time",ylab="Number of species")
+  lines(all_tables$number~all_tables$appearance,type="s")
+  plot_cumulative(all_tables) #### maybe add extinction events
+  plot_cumulative(table_18_1)
+  
+  ##############################important data
+  file_save="data_last_sim_values"
+  write.table(last_simulation_values, file = file_save)
+  file_save="data_all_tables"
+  write.table(all_tables,file=file_save)
+  plot_cumulative(all_tables)
+  file_save="data_total_tables"
+  write.table(total_tables,file=file_save)
+  file_save="data_bigest"
+  write.table(biggest_tables_nrow,file=file_save)
+  file_save="data_mean_length"
+  write.table(mean_table_length,file=file_save)
+  file_save="data_table_1_1"
+  write.table(table_1_1,file=file_save)
+}
+
+
+
+#### Plot the simulation ####
+par(mar = c(5,5,2,5))
+richness=richness[complete.cases(richness),]
+plot(data = richness, n~t, type = "l", lty = 2, main = "One Simulation", xlab = "Time (mya)", ylab = "Richness")
+lines(data = richness, B~t, col = "blue", lwd = 2)
+lines(data = richness, E~t, col = "red", lwd = 2)
+par(new=T)
+plot(data = richness, M~t, type = "l", axes = F, xlab = NA, ylab = NA, col = "green")
+axis(4)
+mtext(text = "Mainland Richness", side=4, line=3)
+for(i in 1:20){abline(h = 500 + i*50, lty = 2, col = "grey")}
+
+
+
+##### Replication done correctly this time ####
+total.sim <- bind_rows(list.sims)
+unique.times <- total.sim[!duplicated(total.sim),]
+unique.times[,c(2:5)] <- NA
+list.times <- list()
+total.times <- NULL
+for(i in 1:(sims)){
+  unique.times$tab <- i
+  name <- paste("times_",i,sep = "")
+  list.times[[name]] <- unique.times
+}
+total.times <- bind_rows(list.times)
+total.sim <- rbind(total.sim, total.times)
+total.sim <- total.sim[order(total.sim$t, total.sim$tab),] ### might work without this sorting
+nrows <- as.numeric(nrow(total.sim[total.sim$t == -10 & is.na(total.sim$B),2:5]))
+total.sim[total.sim$t == -10 & is.na(total.sim$B),2:5] <- c(rep(B0,nrows), rep(E0,nrows), rep(n0,nrows), rep(M0,nrows))
+total.sim$count <- duplicated(total.sim[,c(1,6)])
+total.sim <- total.sim[total.sim$count == FALSE,]
+total.sim <- total.sim[order(total.sim$tab, total.sim$t),]
+total.sim[2:5] <- na.locf(total.sim[2:5])
+total.sim <- total.sim[order(total.sim$t, total.sim$tab),]
+
+
+
+#### Continue with confidence intervals and medians ####
+nurows <- as.numeric(nrow(unique.times))
+confid.sim <- data.frame(matrix(ncol = 13, nrow = nurows)) # change '101' to number of unique timesteps (should be nrow(unique.times))
+colnames(confid.sim) <- c("t", "BHigh", "BMedian", "BLow", "EHigh", "EMedian", "ELow", "nHigh", "nMedian", "nLow", "MHigh", "MMedian", "MLow")
+unique.times <- unique.times[order(unique.times$t),]
+confid.sim$t <- unique.times$t # possibly condense to just ordering this replacement
+confid.sim <- confid.sim[duplicated(confid.sim$t) ==  FALSE,]
+row.names(confid.sim) <- NULL
+nurows <- as.numeric(nrow(confid.sim))
+
+### if below works, replace creation of confid.sim with just stripping unique.sim of only $t and creating it as a new df called confid.sim
+# unique.times <- unique.times[order(unique.times$t),]
+# unique.times <- unique.times[duplicated(unique.times$t) == FALSE,]
+# confid.sim <- data.frame(matrix(unique.times$t)) #extra
+# colnames(confid.sim) <- "t"
+# nurows <- as.numeric(nrow(confid.sim))
+# BHigh <- character(nurows)
+# BMedian <- character(nurows)
+# BLow <- character(nurows)
+# system.time({for(i in 1:nurows){
+#   BHigh[i] <- as.numeric(confint(lm(total.sim$B[total.sim$t == confid.sim$t[i]]~rep(confid.sim$t[i],sims)))[1,2])
+#   BMedian[i] <- as.numeric(mean(total.sim$B[total.sim$t == confid.sim$t[i]]))
+#   BLow[i] <- as.numeric(confint(lm(total.sim$B[total.sim$t == confid.sim$t[i]]~rep(confid.sim$t[i],sims)))[1,1])
+# }
+# confid.sim$BHigh <- BHigh
+# confid.sim$BMedian <- BMedian
+# confid.sim$BLow <- BLow})
+for(i in 1:nurows){
+  confid.sim$BHigh[i] <- as.numeric(confint(lm(total.sim$B[total.sim$t == confid.sim$t[i]]~rep(confid.sim$t[i],sims)))[1,2])
+  confid.sim$BMedian[i] <- as.numeric(mean(total.sim$B[total.sim$t == confid.sim$t[i]]))
+  confid.sim$BLow[i] <- as.numeric(confint(lm(total.sim$B[total.sim$t == confid.sim$t[i]]~rep(confid.sim$t[i],sims)))[1,1])
+}
+for(i in 1:nurows){
+  confid.sim$EHigh[i] <- as.numeric(confint(lm(total.sim$E[total.sim$t == confid.sim$t[i]]~rep(confid.sim$t[i],sims)))[1,2])
+  confid.sim$EMedian[i] <- as.numeric(mean(total.sim$E[total.sim$t == confid.sim$t[i]]))
+  confid.sim$ELow[i] <- as.numeric(confint(lm(total.sim$E[total.sim$t == confid.sim$t[i]]~rep(confid.sim$t[i],sims)))[1,1])
+}
+for(i in 1:nurows){
+  confid.sim$nHigh[i] <- as.numeric(confint(lm(total.sim$n[total.sim$t == confid.sim$t[i]]~rep(confid.sim$t[i],sims)))[1,2])
+  confid.sim$nMedian[i] <- as.numeric(mean(total.sim$n[total.sim$t == confid.sim$t[i]]))
+  confid.sim$nLow[i] <- as.numeric(confint(lm(total.sim$n[total.sim$t == confid.sim$t[i]]~rep(confid.sim$t[i],sims)))[1,1])
+}
+for(i in 1:nurows){
+  confid.sim$MHigh[i] <- as.numeric(confint(lm(total.sim$M[total.sim$t == confid.sim$t[i]]~rep(confid.sim$t[i],sims)))[1,2])
+  confid.sim$MMedian[i] <- as.numeric(mean(total.sim$M[total.sim$t == confid.sim$t[i]]))
+  confid.sim$MLow[i] <- as.numeric(confint(lm(total.sim$M[total.sim$t == confid.sim$t[i]]~rep(confid.sim$t[i],sims)))[1,1])
+}
+# confid.sim <- confid.sim[confid.sim$BHigh != "NA",] # should no longer need this line of code
+
+
+
+#### Plot the corrected replicated simulations ####
+par(mar = c(5,5,2,5))
+plot(data = confid.sim, nMedian~t, type = "l", main = "Replicated Simulation", xlab = "Time (mya)", ylab = "Richness", col = "white", lwd = 2)
+lines(data = confid.sim, nHigh~t, col = "white", lty = 2, lwd = 1)
+lines(data = confid.sim, nLow~t, col = "white", lty = 2, lwd = 1)
+lines(data = confid.sim, BMedian~t, col = "blue", lwd = 2)
+lines(data = confid.sim, BHigh~t, col = "lightblue", lty = 2, lwd = 1)
+lines(data = confid.sim, BLow~t, col = "lightblue", lty = 2, lwd = 1)
+lines(data = confid.sim, EMedian~t, col = "red", lwd = 2)
+lines(data = confid.sim, EHigh~t, col = "pink", lty = 2, lwd = 1)
+lines(data = confid.sim, ELow~t, col = "pink", lty = 2, lwd = 1)
+par(new=T)
+plot(data = confid.sim, MMedian~t, type = "l", axes = F, xlab = NA, ylab = NA, col = "green", lwd = 2)
+lines(data = confid.sim, MHigh~t, col = "limegreen", lty = 2, lwd = 1)
+lines(data = confid.sim, MLow~t, col = "limegreen", lty = 2, lwd = 1)
+axis(4)
+mtext(text = "Mainland Richness", side=4, line=3)
+for(i in 1:20){abline(h = 500 + i*50, lty = 2, col = "darkgrey")}
+
+
+
+
+#
